@@ -1,5 +1,271 @@
 "use client";
-import {useEffect,useState} from 'react'; import Link from 'next/link'; import {api} from '../lib/api'; import {Opportunity,Dependency} from '../types'; import {Header,Panel,Badge} from '../components/ui';
-type Home={developer:{name:string};project:{name:string;client:string};stats:{opportunities:number;open_tasks:number;attention_areas:number;experts_available:number};opportunities:Opportunity[];dependency_alerts:Dependency[];focus:string[]};
-export default function Home(){const[d,setD]=useState<Home|null>(null);const[e,setE]=useState('');useEffect(()=>{api<Home>('/home').then(setD).catch(x=>setE(x.message))},[]);if(e)return <Error text={e}/>;if(!d)return <Loading/>;return <><Header eyebrow="Developer · Project Phoenix" title={`Good morning, ${d.developer.name}.`} sub="PRISM turns project context into the places where you can create the most impact."/><div className="grid grid-cols-4 gap-3 mb-6">{[['Opportunities',d.stats.opportunities],['Open tasks',d.stats.open_tasks],['Needs attention',d.stats.attention_areas],['Experts available',d.stats.experts_available]].map(([a,b])=><Panel key={a as string} className="p-5"><div className="text-xs text-[var(--muted)]">{a}</div><div className="mt-2 text-3xl font-bold">{b}</div></Panel>)}</div><div className="grid grid-cols-[1.4fr_.8fr] gap-5"><Panel className="p-6"><div className="flex items-center justify-between"><div><div className="text-xs uppercase tracking-[.18em] text-[var(--indigo)]">Your focus</div><h2 className="mt-1 text-xl font-bold">Where you can contribute</h2></div><Link className="text-xs font-semibold signal" href="/opportunities">View all →</Link></div><div className="mt-5 space-y-3">{d.opportunities.map(o=><Link href="/opportunities" key={o.title} className="block rounded-xl border border-[var(--line)] p-4 hover:border-[#c9c6ee]"><div className="flex justify-between gap-4"><div><div className="font-semibold">{o.title}</div><div className="mt-1 text-xs text-[var(--muted)]">{o.summary}</div></div><div className="text-right"><div className="text-lg font-bold signal">{o.match}%</div><div className="text-[9px] uppercase text-[var(--muted)]">match</div></div></div></Link>)}</div></Panel><Panel className="p-6"><div className="text-xs uppercase tracking-[.18em] text-[var(--indigo)]">Signals</div><h2 className="mt-1 text-xl font-bold">Dependency alerts</h2><div className="mt-5 space-y-3">{d.dependency_alerts.map(x=><Link href="/dependencies" key={x.id} className="flex items-center justify-between rounded-xl bg-[#f7f6f2] p-3"><div><div className="font-semibold text-sm">{x.name}</div><div className="text-xs text-[var(--muted)]">{x.version}</div></div><Badge tone={x.status==='Deprecated'?'red':'amber'}>{x.status}</Badge></Link>)}</div><div className="mt-7 text-xs uppercase tracking-[.18em] text-[var(--muted)]">Current focus</div><div className="mt-3 flex flex-wrap gap-2">{d.focus.map(x=><Badge key={x} tone="indigo">{x}</Badge>)}</div></Panel></div></>}
-function Loading(){return <div className="animate-pulse"><div className="h-3 w-28 bg-gray-200 rounded"/><div className="mt-4 h-10 w-96 bg-gray-200 rounded"/><div className="mt-8 h-40 bg-white border border-[var(--line)] rounded-2xl"/></div>}function Error({text}:{text:string}){return <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm">Could not reach PRISM API. {text}</div>}
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { api } from "../lib/api";
+import { Opportunity, Dependency } from "../types";
+import { Header, Panel, Badge } from "../components/ui";
+
+type Home = {
+  developer: { name: string };
+  project: { name: string; client: string };
+  stats: {
+    opportunities: number;
+    open_tasks: number;
+    attention_areas: number;
+    experts_available: number;
+  };
+  opportunities: Opportunity[];
+  dependency_alerts: Dependency[];
+  focus: string[];
+};
+
+type AzureStatus = {
+  connected: boolean;
+  connected_at: number | null;
+  account_name: string | null;
+  tenant_id: string | null;
+};
+
+type AzureConnect = {
+  auth_url: string;
+  state: string;
+};
+
+export default function HomePage() {
+  const [data, setData] = useState<Home | null>(null);
+  const [error, setError] = useState("");
+  const [azure, setAzure] = useState<AzureStatus | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+
+  useEffect(() => {
+    api<Home>("/home")
+      .then(setData)
+      .catch((x) => setError(x.message));
+
+    api<AzureStatus>("/integrations/azure/status")
+      .then(setAzure)
+      .catch(() => {
+        setAzure(null);
+      });
+  }, []);
+
+  const startAzureConnect = async () => {
+    setConnectError("");
+    setIsConnecting(true);
+
+    // Open popup immediately on user click to avoid browser popup blocking.
+    const popup = window.open("about:blank", "azure-connect", "popup=yes,width=560,height=720");
+    if (!popup) {
+      setIsConnecting(false);
+      setConnectError("Popup blocked. Allow popups and try again.");
+      return;
+    }
+
+    try {
+      const response = await api<AzureConnect>("/integrations/azure/connect");
+      popup.location.href = response.auth_url;
+
+      const start = Date.now();
+      const timer = window.setInterval(async () => {
+        try {
+          const status = await api<AzureStatus>("/integrations/azure/status");
+          if (status.connected) {
+            window.clearInterval(timer);
+            if (!popup.closed) {
+              popup.close();
+            }
+            setAzure(status);
+            setIsConnecting(false);
+            setConnectError("");
+            return;
+          }
+        } catch {
+          // Keep polling while OAuth callback is in progress.
+        }
+
+        if (popup.closed) {
+          window.clearInterval(timer);
+          setIsConnecting(false);
+          const status = await api<AzureStatus>("/integrations/azure/status").catch(
+            () => null
+          );
+          setAzure(status);
+          if (!status?.connected) {
+            setConnectError("Azure sign-in was closed before connection completed.");
+          }
+          return;
+        }
+
+        if (Date.now() - start > 120000) {
+          window.clearInterval(timer);
+          if (!popup.closed) {
+            popup.close();
+          }
+          setIsConnecting(false);
+          setConnectError("Timed out while waiting for Azure connection.");
+        }
+      }, 1500);
+    } catch (x) {
+      const message = x instanceof Error ? x.message : "Failed to start Azure connection.";
+      if (!popup.closed) {
+        popup.close();
+      }
+      setIsConnecting(false);
+      setConnectError(message);
+    }
+  };
+
+  if (error) {
+    return <ErrorCard text={error} />;
+  }
+  if (!data) {
+    return <LoadingCard />;
+  }
+
+  return (
+    <>
+      <Header
+        eyebrow="Developer · Project Phoenix"
+        title={`Good morning, ${data.developer.name}.`}
+        sub="PRISM turns project context into the places where you can create the most impact."
+      />
+
+      <Panel className="mb-6 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-[.18em] text-[var(--indigo)]">
+              Project onboarding
+            </div>
+            <h2 className="mt-1 text-xl font-bold">Connect Microsoft Azure</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Add a project by linking your Azure account and tenant context.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={startAzureConnect}
+            disabled={isConnecting}
+            className="rounded-xl bg-[var(--indigo)] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isConnecting ? "Connecting..." : "Add Project"}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Badge tone={azure?.connected ? "green" : "amber"}>
+            {azure?.connected ? "Azure connected" : "Not connected"}
+          </Badge>
+          {azure?.account_name ? (
+            <span className="text-xs text-[var(--muted)]">{azure.account_name}</span>
+          ) : null}
+          {azure?.tenant_id ? (
+            <span className="text-xs text-[var(--muted)]">Tenant: {azure.tenant_id}</span>
+          ) : null}
+        </div>
+
+        {connectError ? (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            {connectError}
+          </div>
+        ) : null}
+      </Panel>
+
+      <div className="mb-6 grid grid-cols-4 gap-3">
+        {[
+          ["Opportunities", data.stats.opportunities],
+          ["Open tasks", data.stats.open_tasks],
+          ["Needs attention", data.stats.attention_areas],
+          ["Experts available", data.stats.experts_available],
+        ].map(([label, value]) => (
+          <Panel key={label as string} className="p-5">
+            <div className="text-xs text-[var(--muted)]">{label}</div>
+            <div className="mt-2 text-3xl font-bold">{value}</div>
+          </Panel>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-[1.4fr_.8fr] gap-5">
+        <Panel className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[.18em] text-[var(--indigo)]">Your focus</div>
+              <h2 className="mt-1 text-xl font-bold">Where you can contribute</h2>
+            </div>
+            <Link className="signal text-xs font-semibold" href="/opportunities">
+              View all →
+            </Link>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            {data.opportunities.map((opportunity) => (
+              <Link
+                href="/opportunities"
+                key={opportunity.title}
+                className="block rounded-xl border border-[var(--line)] p-4 hover:border-[#c9c6ee]"
+              >
+                <div className="flex justify-between gap-4">
+                  <div>
+                    <div className="font-semibold">{opportunity.title}</div>
+                    <div className="mt-1 text-xs text-[var(--muted)]">{opportunity.summary}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="signal text-lg font-bold">{opportunity.match}%</div>
+                    <div className="text-[9px] uppercase text-[var(--muted)]">match</div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel className="p-6">
+          <div className="text-xs uppercase tracking-[.18em] text-[var(--indigo)]">Signals</div>
+          <h2 className="mt-1 text-xl font-bold">Dependency alerts</h2>
+          <div className="mt-5 space-y-3">
+            {data.dependency_alerts.map((dependency) => (
+              <Link
+                href="/dependencies"
+                key={dependency.id}
+                className="flex items-center justify-between rounded-xl border border-[var(--line)] p-3"
+              >
+                <div>
+                  <div className="text-sm font-semibold">{dependency.name}</div>
+                  <div className="text-xs text-[var(--muted)]">Current version: {dependency.version}</div>
+                </div>
+                <Badge tone="amber">{dependency.status}</Badge>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-6 text-xs uppercase tracking-[.18em] text-[var(--muted)]">Top focus areas</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {data.focus.map((area) => (
+              <Badge key={area}>{area}</Badge>
+            ))}
+          </div>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <div className="animate-pulse">
+      <div className="h-3 w-28 rounded bg-gray-200" />
+      <div className="mt-4 h-10 w-96 rounded bg-gray-200" />
+      <div className="mt-8 h-40 rounded-2xl border border-[var(--line)] bg-white" />
+    </div>
+  );
+}
+
+function ErrorCard({ text }: { text: string }) {
+  return (
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm">
+      Could not reach PRISM API. {text}
+    </div>
+  );
+}

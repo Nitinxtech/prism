@@ -35,6 +35,18 @@ Open http://localhost:3000.
 
 Set `NEXT_PUBLIC_API_URL` if the backend is not at `http://localhost:8000/api/developer`.
 
+## Azure account connection (Add Project)
+The home page now includes an **Add Project** button that starts Microsoft Azure sign-in.
+
+Configure these backend environment variables before using it:
+- `AZURE_CLIENT_ID`: App registration client ID.
+- `AZURE_CLIENT_SECRET`: App registration client secret.
+- `AZURE_TENANT_ID`: Tenant ID or `common` (default: `common`).
+- `AZURE_REDIRECT_URI`: OAuth callback URL (default: `http://localhost:8000/api/developer/integrations/azure/callback`).
+- `AZURE_SCOPES`: Space-delimited scopes (default includes `openid profile email offline_access` and Azure Management API impersonation).
+
+In Azure App Registration, add the callback URL to redirect URIs.
+
 ## Future roadmap
 1. Replace/mock alongside real GitHub + Azure DevOps ingestion.
 2. Add PostgreSQL + pgvector persistence and document RAG.
