@@ -32,11 +32,34 @@ type AzureConnect = {
   state: string;
 };
 
+type AzureResource = {
+  id: string;
+  name: string;
+  type: string;
+  location: string | null;
+  resource_group: string | null;
+};
+
+type AzureSubscription = {
+  id: string;
+  name: string;
+  state: string | null;
+  resource_groups: { name: string; location: string | null }[];
+  resources: AzureResource[];
+};
+
+type AzureInventory = {
+  summary: { subscriptions: number; resource_groups: number; resources: number };
+  subscriptions: AzureSubscription[];
+};
+
 export default function HomePage() {
   const [data, setData] = useState<Home | null>(null);
   const [error, setError] = useState("");
   const [azure, setAzure] = useState<AzureStatus | null>(null);
+  const [azureInventory, setAzureInventory] = useState<AzureInventory | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingInventory, setIsLoadingInventory] = useState(false);
   const [connectError, setConnectError] = useState("");
 
   useEffect(() => {
@@ -50,6 +73,19 @@ export default function HomePage() {
         setAzure(null);
       });
   }, []);
+
+  const loadAzureInventory = async () => {
+    setConnectError("");
+    setIsLoadingInventory(true);
+    try {
+      setAzureInventory(await api<AzureInventory>("/integrations/azure/inventory"));
+    } catch (x) {
+      const message = x instanceof Error ? x.message : "Failed to load Azure data.";
+      setConnectError(message);
+    } finally {
+      setIsLoadingInventory(false);
+    }
+  };
 
   const startAzureConnect = async () => {
     setConnectError("");
@@ -77,6 +113,7 @@ export default function HomePage() {
               popup.close();
             }
             setAzure(status);
+            void loadAzureInventory();
             setIsConnecting(false);
             setConnectError("");
             return;
@@ -164,11 +201,51 @@ export default function HomePage() {
           {azure?.tenant_id ? (
             <span className="text-xs text-[var(--muted)]">Tenant: {azure.tenant_id}</span>
           ) : null}
+          {azure?.connected ? (
+            <button
+              type="button"
+              onClick={loadAzureInventory}
+              disabled={isLoadingInventory}
+              className="rounded-lg border border-[var(--line)] px-3 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isLoadingInventory ? "Loading Azure data..." : "Refresh Azure data"}
+            </button>
+          ) : null}
         </div>
 
         {connectError ? (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
             {connectError}
+          </div>
+        ) : null}
+
+        {azureInventory ? (
+          <div className="mt-5 border-t border-[var(--line)] pt-4">
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div><span className="text-[var(--muted)]">Subscriptions</span><div className="font-bold">{azureInventory.summary.subscriptions}</div></div>
+              <div><span className="text-[var(--muted)]">Resource groups</span><div className="font-bold">{azureInventory.summary.resource_groups}</div></div>
+              <div><span className="text-[var(--muted)]">Resources</span><div className="font-bold">{azureInventory.summary.resources}</div></div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {azureInventory.subscriptions.map((subscription) => (
+                <details key={subscription.id} className="rounded-lg border border-[var(--line)] p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    {subscription.name} ({subscription.resources.length} resources)
+                  </summary>
+                  <div className="mt-3 text-xs text-[var(--muted)]">
+                    Resource groups: {subscription.resource_groups.map((group) => group.name).join(", ") || "None"}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {subscription.resources.map((resource) => (
+                      <div key={resource.id} className="border-t border-[var(--line)] pt-2 text-xs">
+                        <div className="font-semibold">{resource.name}</div>
+                        <div className="text-[var(--muted)]">{resource.type} · {resource.resource_group || "No resource group"} · {resource.location || "No location"}</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
           </div>
         ) : null}
       </Panel>

@@ -23,6 +23,8 @@ azure_connection_status = {
     "account_name": None,
     "tenant_id": None,
 }
+azure_access_token: str | None = None
+azure_token_expires_at: float = 0
 
 
 def _azure_config():
@@ -52,6 +54,27 @@ def _decode_jwt_payload(token: str):
         return json.loads(decoded)
     except Exception:
         return {}
+
+
+def _azure_get_all(url: str, access_token: str):
+    values = []
+    while url:
+        req = urllib.request.Request(
+            url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise HTTPException(502, f"Azure Resource Manager request failed ({exc.code})")
+        except Exception:
+            raise HTTPException(502, "Azure Resource Manager request failed")
+
+        values.extend(payload.get("value", []))
+        url = payload.get("nextLink")
+    return values
 
 
 def project(): return ctx.get_project_context("phoenix")
@@ -107,6 +130,7 @@ def azure_connect():
 
 @router.get("/integrations/azure/callback", response_class=HTMLResponse)
 def azure_callback(code: str | None = None, state: str | None = None, error: str | None = None):
+    global azure_access_token, azure_token_expires_at
     if error:
         return HTMLResponse(
             f"<html><body><h3>Azure connection failed</h3><p>{error}</p><script>window.close();</script></body></html>",
@@ -168,6 +192,8 @@ def azure_callback(code: str | None = None, state: str | None = None, error: str
         )
 
     id_claims = _decode_jwt_payload(payload.get("id_token", ""))
+    azure_access_token = payload.get("access_token")
+    azure_token_expires_at = time.time() + int(payload.get("expires_in", 0))
     azure_connection_status["connected"] = True
     azure_connection_status["connected_at"] = int(time.time())
     azure_connection_status["account_name"] = id_claims.get("name") or id_claims.get("preferred_username")
@@ -181,3 +207,59 @@ def azure_callback(code: str | None = None, state: str | None = None, error: str
 @router.get("/integrations/azure/status")
 def azure_status():
     return azure_connection_status
+
+
+@router.get("/integrations/azure/inventory")
+def azure_inventory():
+    if not azure_access_token or azure_token_expires_at <= time.time():
+        raise HTTPException(401, "Azure connection has expired. Connect Azure again.")
+
+    subscriptions = _azure_get_all(
+        "https://management.azure.com/subscriptions?api-version=2022-12-01",
+        azure_access_token,
+    )
+    inventory = []
+    total_resource_groups = 0
+    total_resources = 0
+    for subscription in subscriptions:
+        subscription_id = subscription["subscriptionId"]
+        resource_groups = _azure_get_all(
+            f"https://management.azure.com/subscriptions/{subscription_id}/resourcegroups?api-version=2021-04-01",
+            azure_access_token,
+        )
+        resources = _azure_get_all(
+            f"https://management.azure.com/subscriptions/{subscription_id}/resources?api-version=2021-04-01",
+            azure_access_token,
+        )
+        total_resource_groups += len(resource_groups)
+        total_resources += len(resources)
+        inventory.append(
+            {
+                "id": subscription_id,
+                "name": subscription.get("displayName", subscription_id),
+                "state": subscription.get("state"),
+                "resource_groups": [
+                    {"name": group["name"], "location": group.get("location")}
+                    for group in resource_groups
+                ],
+                "resources": [
+                    {
+                        "id": resource["id"],
+                        "name": resource["name"],
+                        "type": resource["type"],
+                        "location": resource.get("location"),
+                        "resource_group": resource.get("resourceGroup"),
+                    }
+                    for resource in resources
+                ],
+            }
+        )
+
+    return {
+        "summary": {
+            "subscriptions": len(inventory),
+            "resource_groups": total_resource_groups,
+            "resources": total_resources,
+        },
+        "subscriptions": inventory,
+    }
