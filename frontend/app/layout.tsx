@@ -1,5 +1,19 @@
 import "./globals.css";
 import { ReactNode } from "react";
-import Sidebar from "../components/Sidebar";
-export const metadata={title:"PRISM — Developer Intelligence",description:"Project intelligence for developers"};
-export default function RootLayout({children}:{children:ReactNode}){return <div className="min-h-screen"><Sidebar/><main className="ml-[250px] min-h-screen px-10 py-8">{children}</main></div>}
+import AppShell from "../components/AppShell";
+
+export const metadata = {
+  title: "PRISM — Same Project. Different Perspective.",
+  description: "One source of truth. Multiple ways to create impact.",
+};
+
+export default function RootLayout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
+    </html>
+  );
+}
+

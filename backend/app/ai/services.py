@@ -14,6 +14,35 @@ class CodebaseAnalyzer:
     def run(self,p:Project):
         return [Insight(title=f.path,summary=f"{f.complexity} complexity · {f.coverage}% test coverage · {f.recent_changes} recent changes",severity="high" if f.coverage<70 else "medium" if f.coverage<80 else "info",impact="Potential engineering attention area.",action="Review tests, recent changes, and dependent components.",evidence=[Evidence(text=f"Test coverage is {f.coverage}%.",source="Codebase",reference=f.path),Evidence(text=f"{f.recent_changes} recent changes were detected.",source="Repository activity",reference=f.path)]) for f in p.files]
 
+class AzureDevOpsAnalyzer:
+    def run(self, inventory):
+        insights = []
+        for organization in inventory["organizations"]:
+            for project in organization["projects"]:
+                work_items = project.get("work_items", [])
+                active_work_items = [item for item in work_items if str(item.get("state") or "").lower() not in {"closed", "done", "removed"}]
+                repositories = project.get("repositories", [])
+                branch_count = sum(len(repository.get("branches", [])) for repository in repositories)
+                file_count = sum(len(repository.get("files", [])) for repository in repositories)
+                reference = f"{organization['name']}/{project['name']}"
+                insights.append(Insight(
+                    title=f"{project['name']} delivery snapshot",
+                    summary=f"{len(active_work_items)} active work items across {len(repositories)} repositories.",
+                    severity="high" if len(active_work_items) > 20 else "medium" if active_work_items else "info",
+                    impact="Active board work should be reviewed alongside the repository changes that support it.",
+                    action="Prioritize active work items and link them to the branches and pull requests delivering the change.",
+                    evidence=[Evidence(text=f"{len(active_work_items)} of {len(work_items)} retrieved work items are active.", source="Azure DevOps Boards", reference=reference)],
+                ))
+                insights.append(Insight(
+                    title=f"{project['name']} repository coverage",
+                    summary=f"{len(repositories)} repositories contain {branch_count} branches and {file_count} discovered files.",
+                    severity="medium" if branch_count > len(repositories) else "info",
+                    impact="Branch inventory provides the code context needed to assess in-flight delivery work.",
+                    action="Review non-default branches and archive merged or obsolete branches.",
+                    evidence=[Evidence(text=f"{branch_count} branches were retrieved from {len(repositories)} repositories.", source="Azure DevOps Repos", reference=reference)],
+                ))
+        return insights
+
 class DependencyAnalyzer:
     def run(self,p:Project):
         return p.dependencies

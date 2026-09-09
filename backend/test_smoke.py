@@ -9,3 +9,8 @@ def test_all():
 
 def test_azure_inventory_requires_connection():
     assert c.get('/api/developer/integrations/azure/inventory').status_code==401
+
+def test_azure_devops_requires_connection():
+    assert c.get('/api/developer/integrations/azure-devops/inventory').status_code==401
+    assert c.get('/api/developer/integrations/azure-devops/insights').status_code==401
+    assert c.get('/api/developer/integrations/azure-devops/organizations/example/projects/example/repositories/example/file?path=/README.md').status_code==401
