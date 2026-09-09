@@ -1,3 +1,93 @@
 @import "tailwindcss";
-:root{--ink:#17181d;--paper:#f7f6f2;--panel:#fff;--muted:#6f727b;--line:#e6e4dd;--indigo:#5752d6;--green:#25835a;--red:#c54b4b;--amber:#a26b12}
-*{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,sans-serif} button,input{font:inherit}.mono{font-family:"JetBrains Mono",ui-monospace,monospace}.signal{color:var(--indigo)}
+
+/* ─── Light-mode design tokens ─── */
+:root {
+  --ink:     #17181d;
+  --ink-2:   #3c3f4a;
+  --paper:   #f5f4f0;
+  --panel:   #ffffff;
+  --panel-2: #f0efe9;
+  --muted:   #6c6f7d;
+  --line:    #e3e1d9;
+  --sidebar: #eceae4;
+  --indigo:  #5752d6;
+  --indigo-dim: #efeeff;
+  --green:   #23825a;
+  --green-dim: #edf8f1;
+  --red:     #c54b4b;
+  --red-dim: #fff0ef;
+  --amber:   #a26b12;
+  --amber-dim: #fff5df;
+}
+
+/* ─── Dark-mode design tokens (applied when <html class="dark"> is set) ─── */
+.dark {
+  --ink:     #e8e9ee;
+  --ink-2:   #a8abb8;
+  --paper:   #0d0e14;
+  --panel:   #13151e;
+  --panel-2: #1a1d28;
+  --muted:   #7a7d8e;
+  --line:    #252836;
+  --sidebar: #0f1118;
+  --indigo:  #7b78f5;
+  --indigo-dim: #1e1c3a;
+  --green:   #31a372;
+  --green-dim: #0f2318;
+  --red:     #e06060;
+  --red-dim: #2a1111;
+  --amber:   #d4943a;
+  --amber-dim: #2a1e08;
+}
+
+/* ─── Base styles ─── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+button, input, select, textarea { font: inherit; }
+
+/* ─── Utility helpers ─── */
+.mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+.signal { color: var(--indigo); }
+
+/* ─── Scrollbar theming ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ─── Theme-aware interactive utilities ─── */
+/* Input/search backgrounds */
+.input-themed {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.input-themed:focus {
+  border-color: var(--indigo);
+  outline: none;
+}
+.input-themed::placeholder {
+  color: var(--muted);
+}
+
+/* List-item selection highlight */
+.item-selected { background: var(--indigo-dim) !important; }
+.item-hover:hover { background: var(--panel-2); }
+
+/* Transitioning elements */
+.theme-transition {
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
